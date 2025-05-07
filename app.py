@@ -1,174 +1,162 @@
-# Byte-compiled / optimized / DLL files
-__pycache__/
-*.py[cod]
-*$py.class
+import random
+import pandas as pd
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+import tkinter as tk
+from tkinter import messagebox
+import zipfile
 
-# C extensions
-*.so
 
-# Distribution / packaging
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-share/python-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
+def run_simulation(rounds, initial_bet, high_risk):
+    starting_balance = 1000
+    balance = starting_balance
+    max_balance = starting_balance
+    anchor_peak = starting_balance
+    in_dynamic_phase = False
+    dynamic_peak = None
 
-# PyInstaller
-#  Usually these files are written by a python script from a template
-#  before PyInstaller builds the exe, so as to inject date/other infos into it.
-*.manifest
-*.spec
+    quick_cashout_base = 1.7
+    bet_base = initial_bet
 
-# Installer logs
-pip-log.txt
-pip-delete-this-directory.txt
+    current_quick_cashout = quick_cashout_base
+    current_bet = bet_base
+    aggressive_level = 0
 
-# Unit test / coverage reports
-htmlcov/
-.tox/
-.nox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-*.py,cover
-.hypothesis/
-.pytest_cache/
-cover/
+    dynamic_bet = 50
+    dynamic_cashout_high = 3.5
+    dynamic_cashout_low = 1.7
+    use_high_cashout = True
 
-# Translations
-*.mo
-*.pot
+    balance_history = [balance]
+    log_data = []
 
-# Django stuff:
-*.log
-local_settings.py
-db.sqlite3
-db.sqlite3-journal
+    for i in range(1, rounds + 1):
+        if i % 7 == 0:
+            num_players = random.randint(10, 30)
+        else:
+            num_players = random.randint(50, 100)
 
-# Flask stuff:
-instance/
-.webassets-cache
+        if num_players >= 80:
+            crash_point = round(random.uniform(1.0, 2.0), 2)
+        elif 50 <= num_players < 80:
+            crash_point = round(random.uniform(1.0, 10.0), 2)
+        else:
+            crash_point = round(random.uniform(1.0, 25.0), 2)
 
-# Scrapy stuff:
-.scrapy
+        if not in_dynamic_phase:
+            if balance < 1200:
+                cashout_point = current_quick_cashout
+                bet = current_bet
+            elif balance < 1500:
+                cashout_point = current_quick_cashout
+                bet = current_bet
+                if balance >= anchor_peak + 200:
+                    anchor_peak = balance
+                    aggressive_level += 1
+                    current_quick_cashout += 0.5
+                    if aggressive_level % 2 == 0:
+                        current_bet += 5
+            else:
+                in_dynamic_phase = True
+                dynamic_peak = balance
+                use_high_cashout = dynamic_bet <= 50
+                cashout_point = dynamic_cashout_high if use_high_cashout else dynamic_cashout_low
+                bet = dynamic_bet
+        else:
+            cashout_point = dynamic_cashout_high if use_high_cashout else dynamic_cashout_low
+            bet = dynamic_bet
 
-# Sphinx documentation
-docs/_build/
+            if balance >= dynamic_peak + 200:
+                dynamic_peak = balance
+                dynamic_bet += 10
+                use_high_cashout = not use_high_cashout
 
-# PyBuilder
-.pybuilder/
-target/
+            if balance <= dynamic_peak - 200:
+                dynamic_peak = balance
+                dynamic_bet = max(10, dynamic_bet - 10)
+                use_high_cashout = not use_high_cashout
 
-# Jupyter Notebook
-.ipynb_checkpoints
+        if high_risk and i % 20 == 0:
+            cashout_point = 10.0  # High-risk round
 
-# IPython
-profile_default/
-ipython_config.py
+        balance_before = balance
+        if cashout_point <= crash_point:
+            win = bet * (cashout_point - 1)
+            balance += win
+            result = 'Win'
+        else:
+            balance -= bet
+            result = 'Loss'
 
-# pyenv
-#   For a library or package, you might want to ignore these files since the code is
-#   intended to run in multiple environments; otherwise, check them in:
-# .python-version
+        balance_history.append(balance)
 
-# pipenv
-#   According to pypa/pipenv#598, it is recommended to include Pipfile.lock in version control.
-#   However, in case of collaboration, if having platform-specific dependencies or dependencies
-#   having no cross-platform support, pipenv may install dependencies that don't work, or not
-#   install all needed dependencies.
-#Pipfile.lock
+        log_data.append({
+            'Round': i,
+            'Balance Before': balance_before,
+            'Bet': bet,
+            'Cashout': cashout_point,
+            'Result': result,
+            'Balance After': balance
+        })
 
-# UV
-#   Similar to Pipfile.lock, it is generally recommended to include uv.lock in version control.
-#   This is especially recommended for binary packages to ensure reproducibility, and is more
-#   commonly ignored for libraries.
-#uv.lock
+        if balance > max_balance:
+            max_balance = balance
 
-# poetry
-#   Similar to Pipfile.lock, it is generally recommended to include poetry.lock in version control.
-#   This is especially recommended for binary packages to ensure reproducibility, and is more
-#   commonly ignored for libraries.
-#   https://python-poetry.org/docs/basic-usage/#commit-your-poetrylock-file-to-version-control
-#poetry.lock
+    df = pd.DataFrame(log_data)
+    df.to_excel("simulation_log.xlsx", index=False)
+    df.to_csv("simulation_log.csv", index=False)
 
-# pdm
-#   Similar to Pipfile.lock, it is generally recommended to include pdm.lock in version control.
-#pdm.lock
-#   pdm stores project-wide configurations in .pdm.toml, but it is recommended to not include it
-#   in version control.
-#   https://pdm.fming.dev/latest/usage/project/#working-with-version-control
-.pdm.toml
-.pdm-python
-.pdm-build/
+    with zipfile.ZipFile("simulation_logs.zip", "w") as zipf:
+        zipf.write("simulation_log.xlsx")
+        zipf.write("simulation_log.csv")
 
-# PEP 582; used by e.g. github.com/David-OConnor/pyflow and github.com/pdm-project/pdm
-__pypackages__/
+    return balance_history, df
 
-# Celery stuff
-celerybeat-schedule
-celerybeat.pid
 
-# SageMath parsed files
-*.sage.py
+def start_simulation():
+    try:
+        rounds = int(entry_rounds.get())
+        initial_bet = float(entry_bet.get())
+    except ValueError:
+        messagebox.showerror("Error", "من فضلك أدخل أرقام صحيحة!")
+        return
 
-# Environments
-.env
-.venv
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
+    high_risk_enabled = high_risk_var.get()
 
-# Spyder project settings
-.spyderproject
-.spyproject
+    balance_history, df = run_simulation(rounds, initial_bet, high_risk_enabled)
 
-# Rope project settings
-.ropeproject
+    fig, ax = plt.subplots(figsize=(6, 4))
+    ax.plot(balance_history)
+    ax.set_title('Crash Simulator')
+    ax.set_xlabel('Round')
+    ax.set_ylabel('Balance')
 
-# mkdocs documentation
-/site
+    canvas = FigureCanvasTkAgg(fig, master=window)
+    canvas.draw()
+    canvas.get_tk_widget().grid(row=5, column=0, columnspan=2)
 
-# mypy
-.mypy_cache/
-.dmypy.json
-dmypy.json
+    messagebox.showinfo("تم الحفظ", "تم حفظ الملفات: simulation_log.xlsx, simulation_log.csv, simulation_logs.zip")
 
-# Pyre type checker
-.pyre/
 
-# pytype static type analyzer
-.pytype/
+# إعداد نافذة Tkinter
+window = tk.Tk()
+window.title("Crash Simulator - JEMY Edition")
 
-# Cython debug symbols
-cython_debug/
+label_rounds = tk.Label(window, text="عدد الجولات:")
+label_rounds.grid(row=0, column=0)
+entry_rounds = tk.Entry(window)
+entry_rounds.grid(row=0, column=1)
 
-# PyCharm
-#  JetBrains specific template is maintained in a separate JetBrains.gitignore that can
-#  be found at https://github.com/github/gitignore/blob/main/Global/JetBrains.gitignore
-#  and can be added to the global gitignore or merged into this file.  For a more nuclear
-#  option (not recommended) you can uncomment the following to ignore the entire idea folder.
-#.idea/
+label_bet = tk.Label(window, text="قيمة الرهان:")
+label_bet.grid(row=1, column=0)
+entry_bet = tk.Entry(window)
+entry_bet.grid(row=1, column=1)
 
-# Ruff stuff:
-.ruff_cache/
+high_risk_var = tk.BooleanVar()
+high_risk_check = tk.Checkbutton(window, text="تفعيل High-Risk Mode", variable=high_risk_var)
+high_risk_check.grid(row=2, column=0, columnspan=2)
 
-# PyPI configuration file
-.pypirc
+start_button = tk.Button(window, text="تشغيل المحاكاة", command=start_simulation)
+start_button.grid(row=3, column=0, columnspan=2)
+
+window.mainloop()
